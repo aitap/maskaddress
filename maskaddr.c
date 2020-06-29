@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdio.h>
 
 #include "windivert.h"
 
@@ -24,35 +25,39 @@ UINT8 packet[0xffff];
 #define quote(x) quote_(x)
 
 int main() {
-	UINT32 src, dest;
-	UINT16 srcport, destport;
+	UINT32 from, to;
+	UINT16 fromport, toport;
 	HANDLE h;
 
 	{
-		BOOL ret = WinDivertHelperParseIPv4Address(MASKADDR_FROM, &src);
+		BOOL ret = WinDivertHelperParseIPv4Address(MASKADDR_FROM, &from);
 		assert(ret);
-		ret = WinDivertHelperParseIPv4Address(MASKADDR_TO, &dest);
+		ret = WinDivertHelperParseIPv4Address(MASKADDR_TO, &to);
 		assert(ret);
 	}
 
-	src = WinDivertHelperHtonl(src);
-	srcport = WinDivertHelperHtons(MASKADDR_FROM_PORT);
-	dest = WinDivertHelperHtonl(dest);
-	destport = WinDivertHelperHtons(MASKADDR_TO_PORT);
+	from = WinDivertHelperHtonl(from);
+	fromport = WinDivertHelperHtons(MASKADDR_FROM_PORT);
+	to = WinDivertHelperHtonl(to);
+	toport = WinDivertHelperHtons(MASKADDR_TO_PORT);
 
 	h = WinDivertOpen(
 		"("
-			"ip.SrcAddr == " MASKADDR_FROM
-			" && tcp.SrcPort == " quote(MASKADDR_FROM_PORT)
-		")"
-		"|| ("
+			"ip.SrcAddr == " MASKADDR_TO
+			" && tcp.SrcPort == " quote(MASKADDR_TO_PORT)
+		") || ("
 			"ip.DstAddr == " MASKADDR_FROM
 			" && tcp.DstPort == " quote(MASKADDR_FROM_PORT)
 		")",
 		WINDIVERT_LAYER_NETWORK,
 		0, 0
 	);
-	if (h == INVALID_HANDLE_VALUE) return -1;
+	if (h == INVALID_HANDLE_VALUE) {
+		printf("WinDivertOpen = %d\n", GetLastError());
+		return -1;
+	}
+
+	printf("from=%x:%d to=%x:%d\n", from, fromport, to, toport);
 
 	for (;;) {
 		UINT plen;
@@ -67,26 +72,43 @@ int main() {
 		if (!WinDivertHelperParsePacket(
 			packet, plen, &iphdr, NULL, NULL, NULL,
 			NULL, &tcphdr, NULL, NULL, NULL, NULL, NULL
-		)) continue;
+		)) {
+			printf("WinDivertHelperParsePacket => %d\n", GetLastError());
+			continue;
+		}
 
 		if (!tcphdr || !iphdr) continue;
 
-		if (iphdr->SrcAddr == src && tcphdr->SrcPort == srcport) {
-			iphdr->SrcAddr = dest;
-			tcphdr->SrcPort = destport;
-		}
-
-		if (iphdr->DstAddr == src && tcphdr->DstPort == srcport) {
-			iphdr->DstAddr = dest;
-			tcphdr->DstPort = destport;
-		}
-
-		if (!WinDivertHelperCalcChecksums(packet, plen, &addr, 0))
-			continue;
-
-		WinDivertSend(
-			h, packet, plen, NULL, &addr
+		printf(
+			"src=%x:%d dst=%x:%d\n",
+			iphdr->SrcAddr, tcphdr->SrcPort,
+			iphdr->DstAddr, tcphdr->DstPort
 		);
+
+		if (iphdr->SrcAddr == to && tcphdr->SrcPort == toport) {
+			iphdr->SrcAddr = from;
+			tcphdr->SrcPort = fromport;
+		}
+
+		if (iphdr->DstAddr == from && tcphdr->DstPort == fromport) {
+			iphdr->DstAddr = to;
+			tcphdr->DstPort = toport;
+		}
+
+		printf(
+			" -> src=%x:%d dst=%x:%d\n",
+			iphdr->SrcAddr, tcphdr->SrcPort,
+			iphdr->DstAddr, tcphdr->DstPort
+		);
+
+		if (!WinDivertHelperCalcChecksums(packet, plen, &addr, 0)) {
+			printf("WinDivertHelperCalcChecksums => %d", GetLastError());
+			continue;
+		}
+
+		if (!WinDivertSend(
+			h, packet, plen, NULL, &addr
+		)) printf("WinDivertSend => %d\n", GetLastError());
 	}
 
 	return 1;
