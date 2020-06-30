@@ -8,7 +8,10 @@
 
 #define SERVICE_NAME "MaskAddress"
 
+/* The service control manager handle for use when running as a service. */
 static SERVICE_STATUS_HANDLE h = NULL;
+
+/* Used as SetServiceStatus argument. */
 static SERVICE_STATUS service_status = {
 	SERVICE_WIN32_OWN_PROCESS,
 	0,
@@ -16,6 +19,10 @@ static SERVICE_STATUS service_status = {
 	NO_ERROR, 0, 0, 0
 };
 
+/*
+ * The handler is registered by service_main and invoked by control dispatcher
+ * in a separate thread when an event occurs.
+ */
 static DWORD WINAPI service_handler(
   DWORD control, DWORD event_type,
   LPVOID event_data, LPVOID ctx
@@ -34,6 +41,10 @@ static DWORD WINAPI service_handler(
 	}
 }
 
+/*
+ * The main function of the service should register the control handler, then
+ * perform the work it is designed to perform.
+ */
 static void WINAPI service_main(DWORD argc, LPSTR *argv) {
 	int ret;
 
@@ -42,12 +53,13 @@ static void WINAPI service_main(DWORD argc, LPSTR *argv) {
 	h = RegisterServiceCtrlHandlerEx(
 		SERVICE_NAME, &service_handler, NULL
 	);
+	/* NB: In theory, we may get ERROR_NOT_ENOUGH_MEMORY for our ANSI string. */
 	assert(h);
 
 	service_status.dwCurrentState = SERVICE_RUNNING;
 	SetServiceStatus(h, &service_status);
 
-	ret = do_maskaddr();
+	ret = do_maskaddr(); /* Blocks until stop_maskaddr() is called. */
 	if (ret) {
 		service_status.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
 		service_status.dwServiceSpecificExitCode = ret;
@@ -57,6 +69,10 @@ static void WINAPI service_main(DWORD argc, LPSTR *argv) {
 	SetServiceStatus(h, &service_status);
 }
 
+/*
+ * This is called when the process is invoked normally
+ * to (un)install the service.
+ */
 static int manage_service(int do_install) {
 	int ret;
 	SC_HANDLE hs = NULL, h = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
@@ -64,7 +80,13 @@ static int manage_service(int do_install) {
 	if (do_install) {
 		enum { cmdline_size = 4096 };
 		static const char cmdline_end[] = "\" -service";
+		/* cmdline is path to executable wrapped in quotes + arguments */
 		char cmdline[1 + cmdline_size + sizeof cmdline_end] = "\"";
+		/*
+		 * In theory, we may get up to MAX_PATH characters. Or an error if the
+		 * Unicode path is not representable in ANSI and there's no short name.
+		 * TODO: switch to W API instead of A
+		 */
 		if (GetModuleFileName(NULL, cmdline + 1, cmdline_size) == cmdline_size) {
 			ret = -2;
 			goto cleanup;
@@ -101,6 +123,7 @@ int main(int argc, char ** argv) {
 		return -1;
 	}
 	if (!strcmp(argv[1], "-service")) {
+		/* This starts up the service and blocks until it's stopped. */
 		return StartServiceCtrlDispatcher(sst) ? 0 : GetLastError();
 	} else if (!strcmp(argv[1], "-install")) {
 		return manage_service(1);
