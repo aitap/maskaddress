@@ -8,22 +8,7 @@
 
 #define SERVICE_NAME "MaskAddress"
 
-static DWORD WINAPI service_handler(
-  DWORD control, DWORD event_type,
-  LPVOID event_data, LPVOID keep_running
-) {
-	(void)event_type, (void)event_data;
-	switch(control) {
-	case SERVICE_CONTROL_INTERROGATE:
-		return NO_ERROR;
-	case SERVICE_CONTROL_STOP:
-		*(BOOL*)keep_running = FALSE;
-		return NO_ERROR;
-	default:
-		return ERROR_CALL_NOT_IMPLEMENTED;
-	}
-}
-
+static SERVICE_STATUS_HANDLE h = NULL;
 static SERVICE_STATUS service_status = {
 	SERVICE_WIN32_OWN_PROCESS,
 	0,
@@ -31,22 +16,38 @@ static SERVICE_STATUS service_status = {
 	NO_ERROR, 0, 0, 0
 };
 
+static DWORD WINAPI service_handler(
+  DWORD control, DWORD event_type,
+  LPVOID event_data, LPVOID ctx
+) {
+	(void)event_type, (void)event_data, (void)ctx;
+	switch(control) {
+	case SERVICE_CONTROL_INTERROGATE:
+		return NO_ERROR;
+	case SERVICE_CONTROL_STOP:
+		stop_maskaddr();
+		service_status.dwCurrentState = SERVICE_STOP_PENDING;
+		SetServiceStatus(h, &service_status);
+		return NO_ERROR;
+	default:
+		return ERROR_CALL_NOT_IMPLEMENTED;
+	}
+}
+
 static void WINAPI service_main(DWORD argc, LPSTR *argv) {
 	int ret;
-	SERVICE_STATUS_HANDLE h;
-	BOOL keep_running = TRUE;
 
 	(void)argc, (void)argv;
 
 	h = RegisterServiceCtrlHandlerEx(
-		SERVICE_NAME, &service_handler, &keep_running
+		SERVICE_NAME, &service_handler, NULL
 	);
 	assert(h);
 
 	service_status.dwCurrentState = SERVICE_RUNNING;
 	SetServiceStatus(h, &service_status);
 
-	ret = do_maskaddr(&keep_running);
+	ret = do_maskaddr();
 	if (ret) {
 		service_status.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
 		service_status.dwServiceSpecificExitCode = ret;

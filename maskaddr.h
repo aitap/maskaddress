@@ -1,1 +1,2 @@
-int do_maskaddr(BOOL * keep_going);
+void stop_maskaddr();
+int do_maskaddr();

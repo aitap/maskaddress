@@ -19,14 +19,18 @@
 #endif
 
 static UINT8 packet[0xffff];
+static HANDLE h = INVALID_HANDLE_VALUE;
 
 #define quote_(x) #x
 #define quote(x) quote_(x)
 
-int do_maskaddr(BOOL * keep_going) {
+void stop_maskaddr() {
+	WinDivertShutdown(h, WINDIVERT_SHUTDOWN_BOTH);
+}
+
+int do_maskaddr() {
 	UINT32 from, to;
 	UINT16 fromport, toport;
-	HANDLE h;
 
 	{
 		BOOL ret = WinDivertHelperParseIPv4Address(MASKADDR_FROM, &from);
@@ -54,15 +58,16 @@ int do_maskaddr(BOOL * keep_going) {
 	if (h == INVALID_HANDLE_VALUE)
 		return GetLastError();
 
-	while (*keep_going) {
+	for (;;) {
 		UINT plen;
 		WINDIVERT_ADDRESS addr;
 		PWINDIVERT_IPHDR iphdr;
 		PWINDIVERT_TCPHDR tcphdr;
 
-		if (!WinDivertRecv(
-			h, packet, sizeof packet, &plen, &addr
-		)) continue;
+		if (!WinDivertRecv(h, packet, sizeof packet, &plen, &addr)) {
+			if (GetLastError() == ERROR_NO_DATA) break;
+			else continue;
+		}
 
 		if (!WinDivertHelperParsePacket(
 			packet, plen, &iphdr, NULL, NULL, NULL,
