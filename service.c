@@ -6,7 +6,7 @@
 
 /* See https://docs.microsoft.com/en-us/windows/win32/services/service-programs */
 
-#define SERVICE_NAME "MaskAddress"
+#define SERVICE_NAME L"MaskAddress"
 
 /* The service control manager handle for use when running as a service. */
 static SERVICE_STATUS_HANDLE h = NULL;
@@ -45,15 +45,14 @@ static DWORD WINAPI service_handler(
  * The main function of the service should register the control handler, then
  * perform the work it is designed to perform.
  */
-static void WINAPI service_main(DWORD argc, LPSTR *argv) {
+static void WINAPI service_main(DWORD argc, LPWSTR *argv) {
 	int ret;
 
 	(void)argc, (void)argv;
 
-	h = RegisterServiceCtrlHandlerEx(
+	h = RegisterServiceCtrlHandlerExW(
 		SERVICE_NAME, &service_handler, NULL
 	);
-	/* NB: In theory, we may get ERROR_NOT_ENOUGH_MEMORY for our ANSI string. */
 	assert(h);
 
 	service_status.dwCurrentState = SERVICE_RUNNING;
@@ -79,27 +78,27 @@ static int manage_service(int do_install) {
 	if (!h) return GetLastError();
 	if (do_install) {
 		enum { cmdline_size = 4096 };
-		static const char cmdline_end[] = "\" -service";
+		static const wchar_t cmdline_end[] = L"\" -service";
 		/* cmdline is path to executable wrapped in quotes + arguments */
-		char cmdline[1 + cmdline_size + sizeof cmdline_end] = "\"";
+		wchar_t cmdline[1 + cmdline_size + sizeof cmdline_end] = L"\"";
 		/*
 		 * In theory, we may get up to MAX_PATH characters. Or an error if the
 		 * Unicode path is not representable in ANSI and there's no short name.
 		 * TODO: switch to W API instead of A
 		 */
-		if (GetModuleFileName(NULL, cmdline + 1, cmdline_size) == cmdline_size) {
+		if (GetModuleFileNameW(NULL, cmdline + 1, cmdline_size) == cmdline_size) {
 			ret = -2;
 			goto cleanup;
 		}
-		strcat(cmdline, cmdline_end);
-		hs = CreateService(
+		wcscat(cmdline, cmdline_end);
+		hs = CreateServiceW(
 			h, SERVICE_NAME, SERVICE_NAME, SERVICE_ALL_ACCESS,
 			SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START, SERVICE_ERROR_NORMAL,
-			cmdline, NULL, NULL, "tcpip\0", NULL, NULL
+			cmdline, NULL, NULL, L"tcpip\0", NULL, NULL
 		);
 		ret = hs ? 0 : GetLastError();
 	} else {
-		hs = OpenService(h, SERVICE_NAME, SERVICE_ALL_ACCESS);
+		hs = OpenServiceW(h, SERVICE_NAME, SERVICE_ALL_ACCESS);
 		if (!hs) {
 			ret = GetLastError();
 			goto cleanup;
@@ -113,8 +112,8 @@ cleanup:
 	return ret;
 }
 
-static const SERVICE_TABLE_ENTRY sst[] = {
-	{ "", &service_main },
+static const SERVICE_TABLE_ENTRYW sst[] = {
+	{ L"", &service_main },
 	{ NULL, NULL }
 };
 
@@ -124,7 +123,7 @@ int main(int argc, char ** argv) {
 	}
 	if (!strcmp(argv[1], "-service")) {
 		/* This starts up the service and blocks until it's stopped. */
-		return StartServiceCtrlDispatcher(sst) ? 0 : GetLastError();
+		return StartServiceCtrlDispatcherW(sst) ? 0 : GetLastError();
 	} else if (!strcmp(argv[1], "-install")) {
 		return manage_service(1);
 	} else if (!strcmp(argv[1], "-uninstall")) {
