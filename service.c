@@ -118,17 +118,15 @@ static const SERVICE_TABLE_ENTRYW sst[] = {
 };
 
 int main(int argc, char ** argv) {
-	if (argc != 2) {
-		return -1;
+	if (argc == 1) return do_maskaddr();
+	if (argc == 2) {
+		if (!strcmp(argv[1], "-service"))
+			/* This starts up the service and blocks until it's stopped. */
+			return StartServiceCtrlDispatcherW(sst) ? 0 : GetLastError();
+		if (!strcmp(argv[1], "-install"))
+			return manage_service(1);
+		if (!strcmp(argv[1], "-uninstall"))
+			return manage_service(0);
 	}
-	if (!strcmp(argv[1], "-service")) {
-		/* This starts up the service and blocks until it's stopped. */
-		return StartServiceCtrlDispatcherW(sst) ? 0 : GetLastError();
-	} else if (!strcmp(argv[1], "-install")) {
-		return manage_service(1);
-	} else if (!strcmp(argv[1], "-uninstall")) {
-		return manage_service(0);
-	} else {
-		return -1;
-	}
+	return -1;
 }
