@@ -69,9 +69,11 @@ int do_maskaddr() {
 		assert(ret);
 		ret = WinDivertHelperParseIPv4Address(MASKADDR_TO, &to);
 		assert(ret);
-		/* Initialise the local address, but it should be overwritten later. */
-		ret = WinDivertHelperParseIPv4Address("127.0.0.1", &local_addr);
-		assert(ret);
+		#if MASKADDR_TO_LOOPBACK
+			/* Initialise the local address, but it should be overwritten later. */
+			ret = WinDivertHelperParseIPv4Address("127.0.0.1", &local_addr);
+			assert(ret);
+		#endif
 	}
 
 	/*
@@ -82,7 +84,9 @@ int do_maskaddr() {
 	fromport = WinDivertHelperHtons(MASKADDR_FROM_PORT);
 	to = WinDivertHelperHtonl(to);
 	toport = WinDivertHelperHtons(MASKADDR_TO_PORT);
-	local_addr = WinDivertHelperHtonl(local_addr);
+	#if MASKADDR_TO_LOOPBACK
+		local_addr = WinDivertHelperHtonl(local_addr);
+	#endif
 
 	h = WinDivertOpen(
 		"("
