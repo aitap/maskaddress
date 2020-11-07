@@ -20,6 +20,15 @@
 	#define MASKADDR_FROM_PORT 443
 #endif
 
+#ifndef MASKADDR_TO_LOOPBACK
+	#define MASKADDR_TO_LOOPBACK 0
+#endif
+
+#if MASKADDR_TO_LOOPBACK
+	#undef MASKADDR_TO
+	#define MASKADDR_TO "127.42.13.37"
+#endif
+
 #ifndef MASKADDR_TO
 	#define MASKADDR_TO "198.51.100.2"
 #endif
@@ -45,6 +54,9 @@ void stop_maskaddr() {
 int do_maskaddr() {
 	UINT32 from, to;
 	UINT16 fromport, toport;
+	#if MASKADDR_TO_LOOPBACK
+		UINT32 local_addr;
+	#endif
 
 	{
 		/*
@@ -57,6 +69,9 @@ int do_maskaddr() {
 		assert(ret);
 		ret = WinDivertHelperParseIPv4Address(MASKADDR_TO, &to);
 		assert(ret);
+		/* Initialise the local address, but it should be overwritten later. */
+		ret = WinDivertHelperParseIPv4Address("127.0.0.1", &local_addr);
+		assert(ret);
 	}
 
 	/*
@@ -67,6 +82,7 @@ int do_maskaddr() {
 	fromport = WinDivertHelperHtons(MASKADDR_FROM_PORT);
 	to = WinDivertHelperHtonl(to);
 	toport = WinDivertHelperHtons(MASKADDR_TO_PORT);
+	local_addr = WinDivertHelperHtonl(local_addr);
 
 	h = WinDivertOpen(
 		"("
@@ -104,15 +120,23 @@ int do_maskaddr() {
 
 		if (!tcphdr || !iphdr) continue;
 
-		/* The actual patching logic of the program. */
-		if (iphdr->SrcAddr == to && tcphdr->SrcPort == toport) {
-			iphdr->SrcAddr = from;
-			tcphdr->SrcPort = fromport;
-		}
-
+		/* Patch the local -> from packets */
 		if (iphdr->DstAddr == from && tcphdr->DstPort == fromport) {
+			#if MASKADDR_TO_LOOPBACK
+				local_addr = iphdr->SrcAddr;
+				iphdr->SrcAddr = to; /* originate from localhost */
+			#endif
 			iphdr->DstAddr = to;
 			tcphdr->DstPort = toport;
+		}
+
+		/* Patch the to -> local packets */
+		if (iphdr->SrcAddr == to && tcphdr->SrcPort == toport) {
+			#if MASKADDR_TO_LOOPBACK
+				iphdr->DstAddr = local_addr;
+			#endif
+			iphdr->SrcAddr = from;
+			tcphdr->SrcPort = fromport;
 		}
 
 		/* Required after modifying the packets */

@@ -44,3 +44,18 @@ check `%ERRORLEVEL%` to see if installation was successful. Use `sc
 the service with the same name must not already exist; when uninstalling,
 the service must be stopped. Run the executable without command line
 arguments to perform the masking in a standalone process.
+
+### Loopback address as destination ###
+
+If the actual and the mask address reside in subnets accessible by
+different routes, the masking may not work. For example, this may happen
+if `FROM` is somewhere accessible via default route while `TO` is a
+loopback address. The proper fix for this would be to set the source and
+destination addresses in rewritten packets based on the routing table,
+but in lieu of that, here are the available workarounds:
+
+ * `#define MASKADDR_TO_LOOPBACK 1` to remember the original local
+   address, but set source and destination addresses to a loopback address
+   where applicable
+ * Only use `MASKADDR_FROM` and `MASKADDR_TO` accessible
+   via the same route
